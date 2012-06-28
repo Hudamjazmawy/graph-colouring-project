@@ -30,6 +30,8 @@ using namespace std;
 #define FALSE 0
 #define INF 100000.0
 int flag;
+int *maxlist; // PASS function use only
+int TH = 3; // threshold
 int adj[MAX_NODE][MAX_NODE]; // adjacency matrix
 int BestColoring;
 int num_node;
@@ -336,12 +338,29 @@ void print_colors() {
 		}
 }
 
+int same(int v1, int v2, int current_color) {
+	/*
+	 * same function in PASS paper
+	 */
+	if(adj[v1][v2] == 0)
+		return 0;
+	else{
+		int sum = 0;
+		for(int i = 1; i <= current_color; i++){
+			if(ColorAdj[v1][i] == 0 && ColorAdj[v2][i] == 0)
+				sum++;
+		}
+		return sum;
+	}
+}
+
 int color(int i, int current_color) {
 	/*
 	 * core DSATUR function
 	 */
-    	int j, new_val;
+    	int j, m, new_val;
     	int k, max, count, place;
+	int returnvalue, tmpvalue, maxvalue;
 
 
     	prob_count++;
@@ -351,24 +370,87 @@ int color(int i, int current_color) {
 
     	if (i >= num_node) return(current_color); // reached leaf node, return
 
+	// pass section
     	max = -1;
     	place = -1;
+	returnvalue = 0;
     	for(k = 0; k < num_node; k++){
 		/*
-		 * Handled[k] -> whether vertex k is colored or not
+		 * find maximum saturation degree
 		 */
         	if(Handled[k]) continue;
-        	if((ColorCount[k] > max) || ((ColorCount[k] == max) && (ColorAdj[k][0] > ColorAdj[place][0]))){
-			/*
-			 * ColorCount[k] -> saturation degree of vertex k
-			 * ColorAdj[k][0] -> degree of vertex k in uncolored subgraph
-			 * select vertex with maximum saturation degree; in case of ties, the 
-			 * vertex with maximum degree in uncolored subgraph is selected
-			 */
-            		max = ColorCount[k];
-	    		place = k;
-        	}
+		if(ColorCount[k] == max)
+			returnvalue = 1;
+		else{
+			if(ColorCount[k] > max){
+				max = ColorCount[k];
+				place = k;
+				returnvalue = 0;
+			}
+		}
     	}
+	if(returnvalue == 1){
+		/*
+		 * a tie happened 
+		 */
+		if(current_color - max <= TH){
+			/*
+			 * using PASS rule
+			 */
+			place = -1;
+			m = 0;
+			maxvalue = -1; // used for PASS rule only
+			maxlist = new int[num_node];
+			for(k = 0; k < num_node; k++){
+				/*
+				 * Handled[k] -> whether vertex k is colored or not
+				 */
+				if(Handled[k]) continue;
+				if(ColorCount[k] == max){
+					maxlist[m] = k;
+					m++;
+				}
+			}
+			/*
+			 * select vertex with maximum common available colors in the uncolored subgraph
+			 */
+			for(k = 0; k < m; k++){
+				tmpvalue = 0;
+				for(int l = 0; l < m; l++){
+					if(k == l) continue;
+					tmpvalue += same(maxlist[k], maxlist[l], current_color);
+				}
+				if(tmpvalue > maxvalue){
+					maxvalue = tmpvalue;
+					place = maxlist[k];
+				}
+			}
+			free(maxlist);
+		}
+		else{
+			/*
+			 * using DSATUR rule
+			 */
+			max = -1;
+			place = -1;
+			for(k = 0; k < num_node; k++){
+				/*
+		 		 * Handled[k] -> whether vertex k is colored or not
+		 		 */
+		        	if(Handled[k]) continue;
+        			if((ColorCount[k] > max) || ((ColorCount[k] == max) && (ColorAdj[k][0] > ColorAdj[place][0]))){
+					/*
+			 		 * ColorCount[k] -> saturation degree of vertex k
+			 		 * ColorAdj[k][0] -> degree of vertex k in uncolored subgraph
+			 		 * select vertex with maximum saturation degree; in case of ties, the 
+			 		 * vertex with maximum degree in uncolored subgraph is selected
+			 		 */
+            				max = ColorCount[k];
+	    				place = k;
+        			}
+			}
+		}
+	}
     	if(place == -1){
         	printf("Graph is disconnected.  This code needs to be updated for that case.\n");
         	exit(1);
@@ -430,7 +512,7 @@ int main(int argc, char** argv) {
 	flag = atoi(argv[1]);
 	if(flag != 1){
 		// Version
-		cout<<"This is DSATUR Application, Version ";
+		cout<<"This is PASS Application, Version ";
 		cout<<3.14;
 		cout<<" (GCC/Linux)"<<endl;
 	}
@@ -485,7 +567,4 @@ int main(int argc, char** argv) {
 		else
 			printf("bestColoring %d lb(not confirmed) %d subproblems %d\n", val, lb, prob_count);
 	}
-}
-	
-
-	  
+}	  
