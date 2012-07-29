@@ -18,6 +18,7 @@
 
 #include <stdio.h>
 #include <math.h>
+#include <time.h>
 #include <stdlib.h>
 
 int main(int argc, char** argv) {
@@ -33,9 +34,9 @@ int main(int argc, char** argv) {
 	}
 	else if(argc == 4){
 		// filename provided by input
-		fw = fopen(argv[4], "w");
+		fw = fopen(argv[3], "w");
 		fputs("c FILE: ", fw);
-		fputs(argv[4], fw);
+		fputs(argv[3], fw);
 		fputs("\n", fw);
 	}
 	else{
@@ -64,15 +65,20 @@ int main(int argc, char** argv) {
 	fprintf(fw, "c created by function call\n");
 	fprintf(fw, "p edge %d %d\n", num_node, num_edge);
 	
+	srand(time(NULL));
 	count = 0;
 	while(true){
 		if(count == num_edge)	break;
 		/*
-		 * int random(int n);
+		 * int rand(int n);
 		 * generates a random number in the range of 0 to n-1
 		 */
 		k = len - count;
+		// The following doesn't work.
+		/*
 		i = random()%k; // get a random value
+		*/
+		i = rand()%k;
 		fputs(list[i], fw); // print to file
 		edge[i] = len - count;
 		count++;
