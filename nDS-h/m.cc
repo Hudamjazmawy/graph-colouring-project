@@ -12,14 +12,12 @@
 #include <cstdlib>
 #include <iostream>
 #include <fstream>
-
 using namespace std;
-#define MAX_NODE 2500
 #define TRUE 1
 #define FALSE 0
 
-int adj[MAX_NODE][MAX_NODE]; // adjacency matrix
-int ColorClass[MAX_NODE];
+
+int *ColorClass;
 
 // adding parameters for testing
 double alpha = 0.4; // additional parameter, random here
@@ -29,6 +27,7 @@ int lb; // lower bound(size of clique)
 int num_node;
 int num_prob, max_prob;
 int best_clique;
+int update_flag = 1;
 
 // -- start of code for nDS
 class graph { // represent the graph in _set concept
@@ -317,7 +316,7 @@ public:
 		// vertex refer to the actual one that is being colored/uncolored
 		// ? whether the SD or D is more important
 
-		if(true) { // in certain condition, do single updates
+		if(update_flag) { // in certain condition, do single updates
 			if(flag) {
 				assert(vertex == this->heap[0]);
 				ColorClass[vertex] = color;
@@ -391,10 +390,7 @@ void read_graph_DIMACS_ascii(char *file, graph &_g) {
 
     	ungetc(c, fp);
 
-    	// 18-Mar-2012
-    	for(i = 0; i < num_node; i++)
-        	for(j = 0; j < num_node; j++)
-        		adj[i][j] = FALSE;
+    	// 18-Apr-2013
 
     	edgecnt = 0;
     	while ((c = fgetc(fp)) != EOF){
@@ -407,8 +403,6 @@ void read_graph_DIMACS_ascii(char *file, graph &_g) {
                 	edgecnt++;
                 	i--; j--;
                 	_g.addEdges(i, j); // added for nDS
-                	adj[i][j] = TRUE;
-                	adj[j][i] = TRUE;
                 	break;
             		case '\n':
             		default:
@@ -421,7 +415,7 @@ void read_graph_DIMACS_ascii(char *file, graph &_g) {
 
 // -- start of code for finding a clique
 
-int greedy_clique(int *valid, int *clique) {
+int greedy_clique(int *valid, int *clique, graph &g) {
 	/*
 	 * subfunction called by max_w_clique() function for finding a clique
 	 */
@@ -429,7 +423,7 @@ int greedy_clique(int *valid, int *clique) {
     	int max;
     	int place,done;
     	int *order;
-    	int weight[MAX_NODE];
+    	int *weight = new int[num_node];
 	
     	for(i = 0; i < num_node; i++) clique[i] = 0;
     	order = (int *)calloc(num_node+1, sizeof(int));
@@ -446,7 +440,7 @@ int greedy_clique(int *valid, int *clique) {
         	if(!valid[i]) continue;
         	for(j = 0; j < num_node; j++){
             		if(!valid[j]) continue;
-            		if(adj[i][j]) weight[i]++;
+            		if(g.ver2loc[i][j]!=-1) weight[i]++;
 		}
     	}
 
@@ -468,7 +462,7 @@ int greedy_clique(int *valid, int *clique) {
     	for(i = 1; i < place; i++){
         	j = order[i];
         	for(k = 0; k < i; k++){
-            		if (clique[order[k]] && !adj[j][order[k]]) break;
+            		if (clique[order[k]] && (g.ver2loc[j][order[k]] == -1)) break;
         	}
         	if(k == i){
             		clique[j] = TRUE;
@@ -483,7 +477,7 @@ int greedy_clique(int *valid, int *clique) {
     	return max;
 }
 
-int max_w_clique(int *valid, int *clique, int lower, int target) {
+int max_w_clique(graph &g, int *valid, int *clique, int lower, int target) {
 	/*
 	 * to find a clique with size as large as possible
 	 */
@@ -506,7 +500,7 @@ int max_w_clique(int *valid, int *clique, int lower, int target) {
 
     	order = (int *)calloc(num_node+1, sizeof(int));
     	value = (int *)calloc(num_node, sizeof(int));
-    	incumb = greedy_clique(valid, clique);
+    	incumb = greedy_clique(valid, clique, g);
     	if(incumb >= target) return incumb;
     	if(incumb > best_clique){
         	best_clique = incumb;
@@ -532,7 +526,7 @@ int max_w_clique(int *valid, int *clique, int lower, int target) {
         	i = order[place];
         	value[i] = 0;
         	for(j = 0; j < num_node; j++){
-            		if(valid[j] && adj[i][j]) value[i]++;
+            		if(valid[j] && (g.ver2loc[i][j] != -1)) value[i]++;
         	}
     	}
 
@@ -566,13 +560,13 @@ int max_w_clique(int *valid, int *clique, int lower, int target) {
         	for(place1 = 0;place1 < num_node; place1++) valid1[place1] = FALSE;
         	for(place1 = 0;place1 < place; place1++){
             		k = order[place1];
-            		if (valid[k] && (adj[j][k])){
+            		if (valid[k] && (g.ver2loc[j][k]!=-1)){
                 		valid1[k] = TRUE;
             		}
             		else
                 		valid1[k] = FALSE;
         	}
-        	new_weight = max_w_clique(valid1, clique1, incumb-1, target-1);
+        	new_weight = max_w_clique(g, valid1, clique1, incumb-1, target-1);
         	if(new_weight+1 > incumb){
             		incumb = new_weight + 1;
             		for(k = 0; k < num_node; k++) clique[k] = clique1[k];
@@ -630,17 +624,22 @@ int main(int argc, char** argv) {
 	 * main function
 	 */
 	int i,val;
-	int valid[MAX_NODE], clique[MAX_NODE];
+	int *valid, *clique;
 	int place;
 
-	if(argc != 2) {
-		cerr<<argv[0]<<" <dimacs_file>"<<endl;
+	if(argc != 3) {
+		cerr<<argv[0]<<" [1/0] <dimacs_file>"<<endl;
 		return 0;
 	}
 
 	//output.open("/home/andrewju/tmp/log1"); // file location atm
 	graph _g;
-	read_graph_DIMACS_ascii(argv[1], _g); // read from .col file
+	update_flag = atoi(argv[1]);
+	read_graph_DIMACS_ascii(argv[2], _g); // read from .col file
+	
+	valid = new int[num_node];
+	clique = new int[num_node];
+	ColorClass = new int[num_node];
 	colset _c;
 
 	for(i = 0; i < num_node; i++) {
@@ -650,28 +649,24 @@ int main(int argc, char** argv) {
 	best_clique = 0;
 	num_prob = 0;
 	max_prob = 100000;
-	clock_t start1 = clock();
-	lb = max_w_clique(valid, clique, 0, num_node); // find a clique
-	clock_t start2 = clock();
+	lb = max_w_clique(_g, valid, clique, 0, num_node); // find a clique
+	clock_t start = clock();
 	cout<<"|l|: "<<lb<<"(";
 	cout<<((num_prob >= max_prob)? "TBC": "C")<<")";
 	sdQ _s(clique);
 	place = -1;
-	cout<<endl;
 	for(i = 0; i < num_node; i++) {
 		if(clique[i]) {
-			cout<<i<<" ";
 			place++;
 			ColorClass[i] = place;
 			updateDS(_g, _c, i, place); }
 	}
-	cout<<endl;
-
 	_s.build_heap(_g, _c);
 
 	val = color(_g, _c, _s, place) + 1; // color function
 	printf(" |X-h|: %d ", val);
 	clock_t ends = clock();
-	cout<<"Time: "<<(double)(ends - start2)/CLOCKS_PER_SEC<<" "<<(double)(ends - start1)/CLOCKS_PER_SEC<<" (h-DSATUR-nDS)"<<endl;
+	cout<<"Time: "<<(double)(ends - start)/CLOCKS_PER_SEC<<" (h-DSATUR-nDS)";
+	cout<<(update_flag? "p": "f")<<endl;
 
 }
